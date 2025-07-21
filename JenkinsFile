@@ -72,11 +72,11 @@ pipeline {
                             
                             aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER}
                             
-                            sed "s|<IMAGE_BE>|${ECR_REPO_BE}:${IMAGE_TAG}|g" k8sfiles/lms-api-deployment.yaml 
-                            sed "s|<IMAGE_FE>|${ECR_REPO_FE}:${IMAGE_TAG}|g" k8sfiles/lms-frontend-deployment.yaml 
+                            sed "s|<IMAGE_BE>|${ECR_REPO_BE}:${IMAGE_TAG}|g" k8sfiles/lms-api-deployment.yml 
+                            sed "s|<IMAGE_FE>|${ECR_REPO_FE}:${IMAGE_TAG}|g" k8sfiles/lms-frontend-deployment.yml 
                             
-                            kubectl apply -f k8sfiles/lms-api-deployment.yaml
-                            kubectl apply -f k8sfiles/lms-frontend-deployment.yaml
+                            kubectl apply -f k8sfiles/lms-api-deployment.yml
+                            kubectl apply -f k8sfiles/lms-frontend-deployment.yml
                         """
                     }
                 }
