@@ -1,0 +1,84 @@
+pipeline {
+   agent any
+   
+
+   stages {
+       stage('Sonar Analysis') {
+           steps {
+               echo 'CODE QUALITY CHECK'
+               sh 'cd webapp'
+               sh 'sudo docker run  --rm -e SONAR_HOST_URL="http://3.143.214.161:9000" -e SONAR_TOKEN="sqp_0a0e3b7976fbc2a15724cc8fc600b6ae9c91a35e"  -v ".:/usr/src" sonarsource/sonar-scanner-cli -Dsonar.projectKey=lms'
+               echo 'CODE QUALITY DONE'  
+           }
+       }
+       stage('Build LMS') {
+           steps {
+               echo 'BUILD LMS APP'
+               sh 'cd webapp && rm -rf node_modules package-lock.json' 
+               sh 'cd webapp && npm install && npm run build'
+               echo 'BUILD COMPLETED'
+           }
+       }
+       stage('Release LMS') {
+           steps {
+               script {
+                   echo "RELEASE LMS Artifacts"      
+                   def packageJSON = readJSON file: 'webapp/package.json'
+                   def packageJSONVersion = packageJSON.version
+                   sh "zip webapp/lms-${packageJSONVersion}.zip -r api/ webapp/"
+                   sh "curl -v -u admin:admin123 --upload-file webapp/lms-${packageJSONVersion}.zip http://3.143.214.161:8081/repository/lms/"    
+           }
+           }
+       }
+       stage('Download & Deploy LMS (Frontend + Backend)') {
+             steps {
+                script {
+                    def packageJSON = readJSON file: 'webapp/package.json'
+                    def packageJSONVersion = packageJSON.version 
+                    echo 'Cleaning previous build'
+                    sh 'rm -rf webapp/ api/'
+                    sh 'mkdir -p webapp api'
+                    echo "Downloading single build artifact (frontend + backend)"
+                    sh "curl -u admin:admin123 -O http://3.143.214.161:8081/repository/lms/lms-${packageJSONVersion}.zip"
+                    echo "Unzipping to workspace"
+                    sh "unzip -o lms-${packageJSONVersion}.zip -d ./"
+                    sh 'ls -la api/Dockerfile'
+                    sh 'ls -la webapp/Dockerfile'
+                    echo "Starting Docker Compose"
+                    sh 'docker compose -f docker-compose.yml up -d --build'
+    }
+  }
+}
+ stage('Run LMS Containers') {
+            steps {
+                echo 'RUNNING LMS CONTAINERS'
+                sh 'docker compose -f docker-compose.yml up -d'
+            }
+        }
+        stage('Deploy to EKS') {
+        environment {
+        AWS_REGION = 'us-east-2'
+        EKS_CLUSTER = 'lms'
+        ECR_REPO_BE = "794038211789.dkr.ecr.us-east-2.amazonaws.com/lms-be"
+        ECR_REPO_FE = "794038211789.dkr.ecr.us-east-2.amazonaws.com/lms-fe"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+    steps {
+        script {
+            sh """
+                aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER}
+
+                sed "s|<IMAGE_BE>|${ECR_REPO_BE}:${IMAGE_TAG}|g" k8s/lms-be-deployment.yaml > k8s/lms-be.yaml
+                sed "s|<IMAGE_FE>|${ECR_REPO_FE}:${IMAGE_TAG}|g" k8s/lms-fe-deployment.yaml > k8s/lms-fe.yaml
+
+                kubectl apply -f k8s/lms-be.yaml
+                kubectl apply -f k8s/lms-fe.yaml
+            """
+        }
+    }
+}
+
+
+
+   }
+}
